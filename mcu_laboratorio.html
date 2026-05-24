@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LAB MCU — Movimento Circular</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Nunito:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── TOKENS ── */
+:root{
+  --ink:#10141c;
+  --paper:#f5f2eb;
+  --cream:#ece8df;
+  --warm:#ddd8cc;
+  --border:#cac4b6;
+  --dim:#9c9588;
+  --acc1:#e63829;   /* red */
+  --acc2:#1d6fb5;   /* blue */
+  --acc3:#e8a020;   /* amber */
+  --acc4:#1aaa6e;   /* green */
+  --font-disp:'Bebas Neue',sans-serif;
+  --font-mono:'DM Mono',monospace;
+  --font-body:'Nunito',sans-serif;
+  --r:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:var(--font-body);background:var(--paper);color:var(--ink);min-height:100vh}
+
+/* ── GRAIN ── */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  opacity:.6;
+}
+
+/* ── LAYOUT ── */
+.page-wrap{max-width:1060px;margin:0 auto;padding:0 20px 80px}
+
+/* ── HEADER ── */
+.hdr{
+  border-bottom:3px solid var(--ink);
+  padding:22px 0 14px;
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:28px;
+}
+.hdr-left{display:flex;align-items:flex-end;gap:14px}
+.hdr-tag{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:3px;
+  text-transform:uppercase;color:var(--acc1);
+  border:1.5px solid var(--acc1);padding:3px 9px;border-radius:2px;
+  margin-bottom:4px;display:inline-block;
+}
+.hdr-title{
+  font-family:var(--font-disp);font-size:52px;letter-spacing:2px;line-height:.9;
+  color:var(--ink);
+}
+.hdr-title em{font-style:normal;color:var(--acc1);}
+.hdr-right{text-align:right}
+.score-lbl{font-family:var(--font-mono);font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+.score-num{font-family:var(--font-disp);font-size:48px;letter-spacing:1px;color:var(--acc3);line-height:1}
+.lives-row{font-size:16px;letter-spacing:3px;margin-top:4px;text-align:right}
+
+/* ── PROGRESS ── */
+.prog{margin-bottom:24px}
+.prog-meta{
+  display:flex;justify-content:space-between;margin-bottom:6px;
+  font-family:var(--font-mono);font-size:10px;letter-spacing:1px;color:var(--dim);
+}
+.prog-track{height:3px;background:var(--warm);position:relative;overflow:visible}
+.prog-fill{
+  height:3px;background:var(--acc1);
+  transition:width .5s cubic-bezier(.4,0,.2,1);
+  position:relative;
+}
+.prog-fill::after{
+  content:'';position:absolute;right:-4px;top:-4px;
+  width:11px;height:11px;border-radius:50%;
+  background:var(--acc1);border:2px solid var(--paper);
+  box-shadow:0 0 0 2px var(--acc1);
+  transition:opacity .3s;
+}
+.prog-dots{display:flex;gap:7px;margin-top:9px}
+.pd{
+  flex:1;height:5px;border-radius:2px;
+  background:var(--warm);border:1px solid var(--border);
+  transition:background .3s,border-color .3s;
+}
+.pd.cur{background:var(--acc3);border-color:var(--acc3)}
+.pd.ok{background:var(--acc4);border-color:var(--acc4)}
+.pd.bad{background:var(--acc1);border-color:var(--acc1)}
+
+/* ── GRID ── */
+.grid{display:grid;grid-template-columns:1fr 420px;gap:20px;align-items:start}
+@media(max-width:780px){.grid{grid-template-columns:1fr}}
+
+/* ── QUESTION CARD ── */
+.qcard{
+  background:#fff;
+  border:1.5px solid var(--border);
+  border-radius:var(--r);
+  overflow:hidden;
+  box-shadow:4px 4px 0 var(--warm);
+}
+.qcard-head{
+  padding:12px 16px;
+  border-bottom:1.5px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  background:var(--cream);
+}
+.qnum{
+  font-family:var(--font-disp);font-size:28px;line-height:1;color:var(--acc1);
+  min-width:32px;
+}
+.qcat{
+  font-family:var(--font-mono);font-size:9px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--dim);border:1px solid var(--border);
+  padding:3px 8px;border-radius:2px;margin-left:auto;background:#fff;
+}
+
+.qcard-body{padding:16px}
+
+.scenario-box{
+  font-family:var(--font-mono);font-size:11.5px;line-height:1.8;
+  color:var(--dim);
+  background:var(--cream);
+  border-left:3px solid var(--acc3);
+  padding:10px 12px;border-radius:0 4px 4px 0;
+  margin-bottom:12px;
+}
+.scenario-box strong{color:var(--ink);font-weight:500}
+
+.formula-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.fchip{
+  font-family:var(--font-mono);font-size:10.5px;font-weight:500;
+  color:var(--acc2);background:#f0f5fb;
+  border:1px solid #c0d4ee;padding:4px 9px;border-radius:2px;
+  letter-spacing:.3px;
+}
+
+.qtext{font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.55;margin-bottom:16px}
+
+.opts{display:flex;flex-direction:column;gap:7px}
+.opt{
+  display:flex;align-items:flex-start;gap:10px;
+  background:var(--paper);border:1.5px solid var(--border);
+  border-radius:4px;padding:10px 13px;
+  cursor:pointer;transition:all .12s;
+  font-size:13.5px;color:#555;text-align:left;width:100%;
+  font-family:var(--font-body);
+}
+.opt:hover:not(:disabled){border-color:var(--acc2);background:#f0f5fb;color:var(--ink)}
+.oltr{
+  font-family:var(--font-mono);font-size:10px;font-weight:500;
+  color:var(--dim);min-width:16px;padding-top:2px;
+}
+.opt.c-ok{background:#edfaf3;border-color:var(--acc4);color:var(--acc4)}
+.opt.c-ok .oltr{color:var(--acc4)}
+.opt.c-bad{background:#fef0ef;border-color:var(--acc1);color:var(--acc1)}
+.opt.c-bad .oltr{color:var(--acc1)}
+.opt.c-rev{background:#edfaf3;border-color:#8dd4b0;color:#2a9a60;opacity:.75}
+
+/* ── STEP-BY-STEP SOLUTION ── */
+.solution{
+  margin-top:14px;overflow:hidden;
+  border:1.5px solid var(--border);border-radius:4px;
+  animation:dropIn .35s ease;
+}
+@keyframes dropIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.sol-hdr{
+  padding:8px 13px;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:1.5px;text-transform:uppercase;font-weight:500;
+  display:flex;align-items:center;gap:8px;
+}
+.sol-hdr.ok{background:var(--acc4);color:#fff}
+.sol-hdr.bad{background:var(--acc1);color:#fff}
+.sol-steps{padding:12px;display:flex;flex-direction:column;gap:8px;background:#fff}
+.sstep{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:#555;line-height:1.6}
+.sn{
+  font-family:var(--font-mono);font-size:9px;font-weight:500;
+  background:var(--ink);color:var(--paper);
+  padding:1px 6px;border-radius:1px;min-width:22px;text-align:center;
+  margin-top:2px;flex-shrink:0;
+}
+.sw{flex:1}
+.smath{
+  font-family:var(--font-mono);font-size:11px;color:var(--acc2);
+  background:#f0f5fb;border:1px solid #c0d4ee;
+  padding:3px 9px;border-radius:2px;margin-top:4px;display:inline-block;
+}
+.sresult{
+  font-family:var(--font-mono);font-size:12px;font-weight:500;
+  color:var(--acc1);background:#fef5ef;
+  border:1px solid #f0c8a0;padding:4px 10px;
+  border-radius:2px;margin-top:4px;display:inline-block;
+}
+
+/* ── NAVIGATION ── */
+.qcard-foot{
+  padding:10px 16px;border-top:1.5px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--cream);
+}
+.nbtn{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:1px;
+  text-transform:uppercase;font-weight:500;
+  background:transparent;border:1.5px solid var(--border);
+  padding:7px 16px;border-radius:3px;cursor:pointer;color:var(--dim);
+  transition:all .12s;
+}
+.nbtn:hover:not(:disabled){border-color:var(--ink);color:var(--ink)}
+.nbtn:disabled{opacity:.2;cursor:default}
+.nbtn.prim{border-color:var(--acc1);color:var(--acc1)}
+.nbtn.prim:hover:not(:disabled){background:var(--acc1);color:#fff}
+
+/* ── SIM PANEL ── */
+.sim-panel{
+  position:sticky;top:16px;
+  background:var(--ink);color:var(--paper);
+  border-radius:var(--r);overflow:hidden;
+  border:2px solid var(--ink);
+  box-shadow:6px 6px 0 var(--acc1);
+}
+.sim-topbar{
+  padding:8px 14px;background:var(--acc1);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.sim-tlbl{font-family:var(--font-mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#fff;font-weight:500}
+.sim-tdots{display:flex;gap:5px}
+.sim-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4)}
+.sim-dot:first-child{background:rgba(255,255,255,.8)}
+
+canvas{display:block;width:100%;background:#0b0e18}
+
+.sim-ctrl{padding:10px 12px;display:flex;flex-direction:column;gap:7px}
+.ctrl-r{display:flex;align-items:center;gap:8px}
+.ctrl-lbl{font-family:var(--font-mono);font-size:9px;letter-spacing:1px;color:rgba(245,242,235,.3);min-width:24px}
+.ctrl-r input[type=range]{
+  flex:1;appearance:none;height:2px;background:rgba(245,242,235,.15);cursor:pointer;
+}
+.ctrl-r input[type=range]::-webkit-slider-thumb{
+  appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--acc1);cursor:pointer;border:2px solid rgba(255,255,255,.3);
+}
+.ctrl-val{font-family:var(--font-mono);font-size:10px;color:var(--acc3);min-width:42px;text-align:right}
+
+.sim-metrics{
+  padding:0 12px 10px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:5px;
+}
+.smt{background:rgba(245,242,235,.04);border:1px solid rgba(245,242,235,.08);border-radius:3px;padding:5px 7px;text-align:center}
+.smt-l{font-family:var(--font-mono);font-size:8px;color:rgba(245,242,235,.28);letter-spacing:1px;text-transform:uppercase}
+.smt-v{font-family:var(--font-mono);font-size:12px;color:var(--acc3);font-weight:500;margin-top:1px}
+
+.sim-vizkey{
+  padding:0 12px 10px;
+  display:flex;flex-direction:column;gap:4px;
+}
+.vk{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.5px;
+  padding:3px 8px;border-radius:2px;border:1px solid;display:flex;align-items:center;gap:6px;
+}
+.vk::before{content:'';width:20px;height:2px;border-radius:1px;flex-shrink:0}
+.vk-v{border-color:rgba(0,220,210,.3);color:rgba(0,220,210,.7);background:rgba(0,220,210,.06)}
+.vk-v::before{background:#00dcd2}
+.vk-a{border-color:rgba(255,78,130,.3);color:rgba(255,78,130,.7);background:rgba(255,78,130,.06)}
+.vk-a::before{background:#ff4e82}
+.vk-f{border-color:rgba(255,200,60,.3);color:rgba(255,200,60,.7);background:rgba(255,200,60,.06)}
+.vk-f::before{background:#ffc83c}
+
+/* ── RESULT ── */
+.result-overlay{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(16,20,28,.95);
+  display:flex;align-items:center;justify-content:center;
+  animation:fadeIn .5s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.result-box{
+  text-align:center;max-width:560px;padding:40px 32px;
+  background:var(--paper);border:3px solid var(--ink);border-radius:var(--r);
+  box-shadow:10px 10px 0 var(--acc1);
+  animation:popIn .4s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+.res-eyebrow{font-family:var(--font-mono);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.res-title{font-family:var(--font-disp);font-size:64px;letter-spacing:2px;line-height:.9;margin-bottom:4px;color:var(--ink)}
+.res-title em{font-style:normal;color:var(--acc1)}
+.res-score-big{font-family:var(--font-disp);font-size:80px;color:var(--acc3);line-height:1}
+.res-score-lbl{font-family:var(--font-mono);font-size:10px;letter-spacing:2px;color:var(--dim);margin-bottom:20px}
+.res-msg{font-size:14px;font-weight:300;color:#555;line-height:1.65;margin-bottom:24px;max-width:400px;margin-left:auto;margin-right:auto}
+.res-grid{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:28px}
+.rbadge{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.5px;
+  padding:5px 12px;border-radius:2px;border:1.5px solid;
+}
+.rbadge.ok{background:#edfaf3;border-color:#8dd4b0;color:var(--acc4)}
+.rbadge.bad{background:#fef0ef;border-color:#f0a898;color:var(--acc1)}
+.res-restart{
+  font-family:var(--font-mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:500;
+  background:var(--acc1);color:#fff;border:none;
+  padding:12px 32px;border-radius:3px;cursor:pointer;
+  transition:opacity .15s;border-bottom:3px solid #a0201a;
+}
+.res-restart:hover{opacity:.88}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <div>
+        <div class="hdr-tag">Física · MCU</div>
+        <div class="hdr-title">LAB <em>MCU</em></div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="score-lbl">Pontuação</div>
+      <div class="score-num" id="score-num">000</div>
+      <div class="lives-row" id="lives-row">❤️❤️❤️</div>
+    </div>
+  </header>
+
+  <!-- PROGRESS -->
+  <div class="prog">
+    <div class="prog-meta">
+      <span id="prog-txt">QUESTÃO 1 / 7</span>
+      <span id="prog-pct">14%</span>
+    </div>
+    <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:14%"></div></div>
+    <div class="prog-dots" id="prog-dots"></div>
+  </div>
+
+  <!-- GAME GRID -->
+  <div class="grid">
+
+    <!-- LEFT: Question -->
+    <div class="qcard" id="qcard">
+      <!-- filled by JS -->
+    </div>
+
+    <!-- RIGHT: Simulation -->
+    <div class="sim-panel">
+      <div class="sim-topbar">
+        <span class="sim-tlbl">Demonstração Prática</span>
+        <div class="sim-tdots">
+          <div class="sim-dot"></div>
+          <div class="sim-dot"></div>
+          <div class="sim-dot"></div>
+        </div>
+      </div>
+      <canvas id="cv" width="416" height="280"></canvas>
+      <div class="sim-ctrl">
+        <div class="ctrl-r">
+          <span class="ctrl-lbl">ω×</span>
+          <input type="range" id="sl-sp" min="0.1" max="5" step="0.1" value="1">
+          <span class="ctrl-val" id="sl-sp-v">1.0×</span>
+        </div>
+        <div class="ctrl-r">
+          <span class="ctrl-lbl">r</span>
+          <input type="range" id="sl-r" min="30" max="110" step="5" value="80">
+          <span class="ctrl-val" id="sl-r-v">80 u</span>
+        </div>
+      </div>
+      <div class="sim-metrics" id="sim-metrics"></div>
+      <div class="sim-vizkey" id="viz-key"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════
+   QUESTIONS
+═══════════════════════════════ */
+const QS = [
+  {
+    cat:'PERÍODO & FREQUÊNCIA',
+    scenario:'Uma roda de bicicleta gira a <strong>300 rpm</strong> (rotações por minuto).',
+    formulas:['f = rpm / 60','T = 1 / f'],
+    text:'Calcule a frequência em Hz e o período T em segundos.',
+    opts:[
+      'f = 5 Hz  →  T = 0,200 s',
+      'f = 3 Hz  →  T = 0,333 s',
+      'f = 5 Hz  →  T = 0,100 s',
+      'f = 10 Hz  →  T = 0,100 s'
+    ],
+    ans:0,
+    steps:[
+      {t:'Converter rpm → Hz',m:'f = 300 / 60 = 5 Hz'},
+      {t:'Calcular período',m:'T = 1 / f = 1 / 5',r:'T = 0,200 s'}
+    ],
+    viz:'v', simT:0.2, simR:80
+  },
+  {
+    cat:'VELOCIDADE LINEAR',
+    scenario:'Um objeto descreve um círculo de <strong>raio r = 2 m</strong> com período <strong>T = 4 s</strong>.',
+    formulas:['v = 2πr / T'],
+    text:'Qual é a velocidade linear do objeto?',
+    opts:[
+      'v = π m/s ≈ 3,14 m/s',
+      'v = 2π m/s ≈ 6,28 m/s',
+      'v = π/2 m/s ≈ 1,57 m/s',
+      'v = 4π m/s ≈ 12,6 m/s'
+    ],
+    ans:0,
+    steps:[
+      {t:'Aplicar fórmula',m:'v = 2π × r / T = 2π × 2 / 4'},
+      {t:'Simplificar',m:'v = 4π / 4 = π',r:'v = π ≈ 3,14 m/s'}
+    ],
+    viz:'v', simT:4, simR:90
+  },
+  {
+    cat:'VELOCIDADE ANGULAR',
+    scenario:'Uma turbina completa <strong>1200 rpm</strong>. Determine ω em rad/s.',
+    formulas:['ω = 2πf','f = rpm/60'],
+    text:'Qual é a velocidade angular da turbina em rad/s?',
+    opts:[
+      'ω = 20π ≈ 62,8 rad/s',
+      'ω = 40π ≈ 125,7 rad/s',
+      'ω = 10π ≈ 31,4 rad/s',
+      'ω = 60π ≈ 188,5 rad/s'
+    ],
+    ans:1,
+    steps:[
+      {t:'rpm → Hz',m:'f = 1200 / 60 = 20 Hz'},
+      {t:'ω = 2πf',m:'ω = 2π × 20 = 40π',r:'ω ≈ 125,7 rad/s'}
+    ],
+    viz:'v', simT:0.05, simR:75
+  },
+  {
+    cat:'ACELERAÇÃO CENTRÍPETA',
+    scenario:'Um carro faz uma curva de <strong>raio R = 80 m</strong> a <strong>v = 40 m/s</strong>.',
+    formulas:['ac = v² / R'],
+    text:'Calcule a aceleração centrípeta e diga sua direção.',
+    opts:[
+      'ac = 20 m/s², aponta para o centro',
+      'ac = 10 m/s², aponta para fora',
+      'ac = 20 m/s², aponta para fora',
+      'ac = 40 m/s², tangente à curva'
+    ],
+    ans:0,
+    steps:[
+      {t:'Aplicar ac = v²/R',m:'ac = 40² / 80 = 1600 / 80'},
+      {t:'Resultado',m:'ac = 20 m/s²',r:'Direção: aponta para o centro da curva'}
+    ],
+    viz:'ac', simT:5, simR:100
+  },
+  {
+    cat:'FORÇA CENTRÍPETA',
+    scenario:'Uma pedra de <strong>m = 0,5 kg</strong> gira em um fio com <strong>r = 1 m</strong> e <strong>T = 2 s</strong>.',
+    formulas:['v = 2πr/T','ac = v²/r','Fc = m · ac'],
+    text:'Calcule a velocidade, aceleração centrípeta e a força centrípeta na pedra.',
+    opts:[
+      'v≈3,14 m/s  ·  ac≈9,87 m/s²  ·  Fc≈4,93 N',
+      'v≈6,28 m/s  ·  ac≈39,5 m/s²  ·  Fc≈19,7 N',
+      'v≈1,57 m/s  ·  ac≈2,47 m/s²  ·  Fc≈1,23 N',
+      'v≈3,14 m/s  ·  ac≈4,93 m/s²  ·  Fc≈2,47 N'
+    ],
+    ans:0,
+    steps:[
+      {t:'Velocidade linear',m:'v = 2π×1/2 = π ≈ 3,14 m/s'},
+      {t:'Aceleração centrípeta',m:'ac = π²/1 ≈ 9,87 m/s²'},
+      {t:'Força centrípeta',m:'Fc = 0,5 × 9,87',r:'Fc ≈ 4,93 N  (exercida pelo fio, aponta ao centro)'}
+    ],
+    viz:'fc', simT:2, simR:85
+  },
+  {
+    cat:'RELAÇÃO ω E v',
+    scenario:'Dois pontos A e B em um disco rígido: <strong>rA = 0,3 m</strong> e <strong>rB = 0,6 m</strong>. O disco gira com <strong>ω = 10 rad/s</strong>.',
+    formulas:['v = ω · r'],
+    text:'Compare as velocidades lineares de A e B. O que ocorre quando r dobra?',
+    opts:[
+      'vA = 3 m/s  ·  vB = 6 m/s  —  vB é o dobro de vA',
+      'vA = 3 m/s  ·  vB = 3 m/s  —  são iguais',
+      'vA = 6 m/s  ·  vB = 3 m/s  —  vA é o dobro de vB',
+      'vA = 30 m/s  ·  vB = 60 m/s  —  vB é o dobro de vA'
+    ],
+    ans:0,
+    steps:[
+      {t:'vA = ω × rA',m:'vA = 10 × 0,3 = 3 m/s'},
+      {t:'vB = ω × rB',m:'vB = 10 × 0,6 = 6 m/s'},
+      {t:'Relação',m:'vB / vA = 6 / 3 = 2',r:'Raio dobra → velocidade linear dobra (ω constante)'}
+    ],
+    viz:'v2', simT:0.63, simR:55
+  },
+  {
+    cat:'DESAFIO COMPLETO',
+    scenario:'Um satélite orbita a Terra a <strong>r = 6.800 km = 6,8×10⁶ m</strong> com <strong>T = 5400 s (90 min)</strong>.',
+    formulas:['v = 2πr/T','ac = v²/r','Comparar com g = 9,8 m/s²'],
+    text:'Calcule v, ac e compare ac com a gravidade terrestre g.',
+    opts:[
+      'v ≈ 7910 m/s  ·  ac ≈ 9,19 m/s² ≈ 0,94 g',
+      'v ≈ 3960 m/s  ·  ac ≈ 2,30 m/s² ≈ 0,23 g',
+      'v ≈ 15820 m/s  ·  ac ≈ 36,8 m/s² ≈ 3,75 g',
+      'v ≈ 7910 m/s  ·  ac ≈ 4,60 m/s² ≈ 0,47 g'
+    ],
+    ans:0,
+    steps:[
+      {t:'Velocidade orbital',m:'v = 2π × 6,8×10⁶ / 5400 ≈ 7914 m/s'},
+      {t:'Aceleração centrípeta',m:'ac = v² / r = (7914)² / 6,8×10⁶ ≈ 9,19 m/s²'},
+      {t:'Comparar com g',m:'9,19 / 9,8 ≈ 0,94',r:'ac ≈ 0,94 g — quase igual à gravidade! (isso é o que mantém o satélite em órbita)'}
+    ],
+    viz:'ac', simT:10, simR:100
+  }
+];
+
+/* ═══════════════════════════════
+   STATE
+═══════════════════════════════ */
+let cur=0, score=0, lives=3;
+let answered=Array(QS.length).fill(false);
+let correct=Array(QS.length).fill(false);
+let simSpeed=1, simR=80;
+let simAngle=0, simAngle2=0, simRaf=null, trail=[], trail2=[];
+
+/* ═══════════════════════════════
+   CANVAS SIM
+═══════════════════════════════ */
+const cv = document.getElementById('cv');
+const ctx2 = cv.getContext('2d');
+
+document.getElementById('sl-sp').oninput=e=>{
+  simSpeed=+e.target.value;
+  document.getElementById('sl-sp-v').textContent=simSpeed.toFixed(1)+'×';
+};
+document.getElementById('sl-r').oninput=e=>{
+  simR=+e.target.value;
+  document.getElementById('sl-r-v').textContent=simR+' u';
+};
+
+function stopSim(){if(simRaf){cancelAnimationFrame(simRaf);simRaf=null;}}
+
+function startSim(q){
+  stopSim();
+  simR=q.simR||80;
+  document.getElementById('sl-r').value=simR;
+  document.getElementById('sl-r-v').textContent=simR+' u';
+  trail=[]; trail2=[];
+  const T=q.simT||2;
+  const omega=2*Math.PI/T;
+  let last=null;
+  function step(ts){
+    if(!last)last=ts;
+    const dt=Math.min((ts-last)/1000,0.05);last=ts;
+    simAngle+=omega*dt*simSpeed;
+    simAngle2+=omega*dt*simSpeed*0.5;
+    drawSim(q);
+    updateSimMetrics(q);
+    simRaf=requestAnimationFrame(step);
+  }
+  simRaf=requestAnimationFrame(step);
+}
+
+function drawSim(q){
+  const W=cv.width,H=cv.height;
+  const cx=W/2,cy=H/2;
+  const R=simR;
+  const ang=simAngle;
+  const px=cx+R*Math.cos(ang),py=cy+R*Math.sin(ang);
+  const vx=-Math.sin(ang),vy=Math.cos(ang);
+  const ax=-Math.cos(ang),ay=-Math.sin(ang);
+
+  // BG
+  ctx2.fillStyle='#0b0e18';ctx2.fillRect(0,0,W,H);
+  const bg=ctx2.createRadialGradient(cx,cy,0,cx,cy,W*0.6);
+  bg.addColorStop(0,'rgba(20,40,90,0.5)');bg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx2.fillStyle=bg;ctx2.fillRect(0,0,W,H);
+
+  // Stars
+  if(!window._stars){
+    window._stars=Array.from({length:120},()=>({
+      x:Math.random()*416,y:Math.random()*280,
+      r:Math.random()*1.2+0.3,o:Math.random()*0.6+0.1
+    }));
+  }
+  window._stars.forEach(s=>{
+    ctx2.beginPath();ctx2.arc(s.x,s.y,s.r,0,2*Math.PI);
+    ctx2.fillStyle=`rgba(200,215,255,${s.o})`;ctx2.fill();
+  });
+
+  // Orbit ring
+  ctx2.beginPath();ctx2.arc(cx,cy,R,0,2*Math.PI);
+  ctx2.strokeStyle='rgba(255,255,255,0.07)';ctx2.lineWidth=1;
+  ctx2.setLineDash([4,7]);ctx2.stroke();ctx2.setLineDash([]);
+
+  // Trail
+  trail.push({x:px,y:py});if(trail.length>55)trail.shift();
+  trail.forEach((pt,i)=>{
+    const a=i/trail.length*0.5;
+    ctx2.beginPath();ctx2.arc(pt.x,pt.y,2.5,0,2*Math.PI);
+    ctx2.fillStyle=`rgba(0,220,210,${a})`;ctx2.fill();
+  });
+
+  // Radius line
+  ctx2.beginPath();ctx2.moveTo(cx,cy);ctx2.lineTo(px,py);
+  ctx2.strokeStyle='rgba(255,255,255,0.06)';ctx2.lineWidth=0.8;ctx2.stroke();
+
+  // Center body
+  const cg=ctx2.createRadialGradient(cx,cy,0,cx,cy,28);
+  cg.addColorStop(0,'#4466cc');cg.addColorStop(1,'#0a1860');
+  ctx2.beginPath();ctx2.arc(cx,cy,28,0,2*Math.PI);
+  ctx2.fillStyle=cg;ctx2.fill();
+  ctx2.strokeStyle='rgba(100,140,255,0.4)';ctx2.lineWidth=1;ctx2.stroke();
+  // planet ring
+  ctx2.save();ctx2.translate(cx,cy);ctx2.scale(1,0.35);
+  ctx2.beginPath();ctx2.arc(0,0,40,0,2*Math.PI);
+  ctx2.strokeStyle='rgba(100,140,255,0.15)';ctx2.lineWidth=3;ctx2.stroke();
+  ctx2.restore();
+
+  const viz=q.viz;
+
+  // ── v2: two objects ──
+  if(viz==='v2'){
+    const R2=simR*1.8;const Rcap=Math.min(R2,W/2-16);
+    const ang2=simAngle2;
+    const px2=cx+Rcap*Math.cos(ang2),py2=cy+Rcap*Math.sin(ang2);
+    ctx2.beginPath();ctx2.arc(cx,cy,Rcap,0,2*Math.PI);
+    ctx2.strokeStyle='rgba(255,200,60,0.12)';ctx2.lineWidth=1;
+    ctx2.setLineDash([4,7]);ctx2.stroke();ctx2.setLineDash([]);
+    trail2.push({x:px2,y:py2});if(trail2.length>55)trail2.shift();
+    trail2.forEach((pt,i)=>{
+      const a=i/trail2.length*0.4;
+      ctx2.beginPath();ctx2.arc(pt.x,pt.y,2.5,0,2*Math.PI);
+      ctx2.fillStyle=`rgba(255,200,60,${a})`;ctx2.fill();
+    });
+    // object B
+    const bg2=ctx2.createRadialGradient(px2,py2,0,px2,py2,18);
+    bg2.addColorStop(0,'rgba(255,200,60,0.35)');bg2.addColorStop(1,'rgba(255,200,60,0)');
+    ctx2.beginPath();ctx2.arc(px2,py2,18,0,2*Math.PI);ctx2.fillStyle=bg2;ctx2.fill();
+    ctx2.beginPath();ctx2.arc(px2,py2,8,0,2*Math.PI);
+    ctx2.fillStyle='#ffc83c';ctx2.fill();
+    ctx2.strokeStyle='rgba(255,220,120,0.6)';ctx2.lineWidth=1.2;ctx2.stroke();
+    // v vector for B
+    const vs2=40,bvx=-Math.sin(ang2),bvy=Math.cos(ang2);
+    ctx2.save();ctx2.shadowBlur=8;ctx2.shadowColor='#ffc83c';
+    ctx2.beginPath();ctx2.moveTo(px2,py2);ctx2.lineTo(px2+bvx*vs2,py2+bvy*vs2);
+    ctx2.strokeStyle='#ffc83c';ctx2.lineWidth=2;ctx2.stroke();ctx2.restore();
+    arw(ctx2,px2+bvx*vs2,py2+bvy*vs2,bvx,bvy,'#ffc83c');
+    ctx2.font='bold 10px DM Mono,monospace';ctx2.fillStyle='#ffc83c';
+    ctx2.textAlign='center';ctx2.fillText('vB',px2+bvx*52,py2+bvy*52);
+    ctx2.font='9px DM Mono,monospace';ctx2.fillStyle='rgba(255,200,60,0.5)';
+    ctx2.fillText('B  (rB=2rA)',px2,py2+22);
+  }
+
+  // ── velocity vector ──
+  if(viz==='v'||viz==='v2'||viz==='fc'){
+    const vs=50;
+    ctx2.save();ctx2.shadowBlur=12;ctx2.shadowColor='#00dcd2';
+    ctx2.beginPath();ctx2.moveTo(px,py);ctx2.lineTo(px+vx*vs,py+vy*vs);
+    ctx2.strokeStyle='#00dcd2';ctx2.lineWidth=2.5;ctx2.stroke();ctx2.restore();
+    arw(ctx2,px+vx*vs,py+vy*vs,vx,vy,'#00dcd2');
+    ctx2.font='bold 11px DM Mono,monospace';ctx2.fillStyle='#00dcd2';
+    ctx2.textAlign='center';ctx2.fillText(viz==='v2'?'vA':'v⃗',px+vx*64,py+vy*64);
+    if(viz==='v2'){ctx2.font='9px DM Mono,monospace';ctx2.fillStyle='rgba(0,220,210,0.5)';ctx2.fillText('A  (rA)',px,py+20);}
+  }
+
+  // ── centripetal acceleration ──
+  if(viz==='ac'||viz==='fc'){
+    const as=46;
+    ctx2.save();ctx2.shadowBlur=12;ctx2.shadowColor='#ff4e82';
+    ctx2.beginPath();ctx2.moveTo(px,py);ctx2.lineTo(px+ax*as,py+ay*as);
+    ctx2.strokeStyle='#ff4e82';ctx2.lineWidth=2.5;ctx2.stroke();ctx2.restore();
+    arw(ctx2,px+ax*as,py+ay*as,ax,ay,'#ff4e82');
+    ctx2.font='bold 11px DM Mono,monospace';ctx2.fillStyle='#ff4e82';
+    ctx2.textAlign='center';ctx2.fillText('ac⃗',px+ax*60,py+ay*60);
+  }
+
+  // ── force label ──
+  if(viz==='fc'){
+    ctx2.save();ctx2.globalAlpha=0.55;
+    ctx2.beginPath();ctx2.moveTo(px+ax*10,py+ay*10);ctx2.lineTo(px+ax*38,py+ay*38);
+    ctx2.strokeStyle='#ffc83c';ctx2.lineWidth=1.5;ctx2.setLineDash([3,3]);ctx2.stroke();
+    ctx2.restore();ctx2.setLineDash([]);
+    ctx2.font='10px DM Mono,monospace';ctx2.fillStyle='rgba(255,200,60,0.8)';
+    ctx2.textAlign='center';ctx2.fillText('Fc⃗',px+ax*52,py+ay*52);
+  }
+
+  // Angle sweep
+  const sw=simAngle%(2*Math.PI);
+  ctx2.beginPath();ctx2.moveTo(cx,cy);ctx2.arc(cx,cy,20,0,sw);ctx2.closePath();
+  ctx2.fillStyle='rgba(0,220,210,0.08)';ctx2.fill();
+  ctx2.beginPath();ctx2.arc(cx,cy,20,0,sw);
+  ctx2.strokeStyle='rgba(0,220,210,0.35)';ctx2.lineWidth=1;ctx2.stroke();
+  ctx2.font='9px DM Mono,monospace';ctx2.fillStyle='rgba(0,220,210,0.45)';
+  ctx2.textAlign='center';
+  const mid=sw/2;ctx2.fillText('θ',cx+28*Math.cos(mid),cy+28*Math.sin(mid));
+
+  // Object glow
+  const og=ctx2.createRadialGradient(px,py,0,px,py,20);
+  og.addColorStop(0,'rgba(0,220,210,0.4)');og.addColorStop(1,'rgba(0,220,210,0)');
+  ctx2.beginPath();ctx2.arc(px,py,20,0,2*Math.PI);ctx2.fillStyle=og;ctx2.fill();
+
+  // Object
+  ctx2.beginPath();ctx2.arc(px,py,8,0,2*Math.PI);
+  const og2=ctx2.createRadialGradient(px-2,py-2,1,px,py,8);
+  og2.addColorStop(0,'#7cf8f0');og2.addColorStop(1,'#008c88');
+  ctx2.fillStyle=og2;ctx2.fill();
+  ctx2.strokeStyle='rgba(0,220,210,0.6)';ctx2.lineWidth=1.2;ctx2.stroke();
+
+  // r label
+  ctx2.font='9px DM Mono,monospace';ctx2.fillStyle='rgba(255,255,255,0.18)';
+  ctx2.textAlign='center';
+  ctx2.fillText('r',cx+R/2*Math.cos(ang+0.2),cy+R/2*Math.sin(ang+0.2)-4);
+}
+
+function arw(c,x,y,dx,dy,col){
+  const L=9,a=Math.atan2(dy,dx);
+  c.beginPath();
+  c.moveTo(x,y);c.lineTo(x-L*Math.cos(a-.43),y-L*Math.sin(a-.43));
+  c.moveTo(x,y);c.lineTo(x-L*Math.cos(a+.43),y-L*Math.sin(a+.43));
+  c.strokeStyle=col;c.lineWidth=1.8;c.stroke();
+}
+
+function updateSimMetrics(q){
+  const el=document.getElementById('sim-metrics');if(!el)return;
+  const T=(q.simT/simSpeed).toFixed(3);
+  const f=(simSpeed/q.simT).toFixed(3);
+  const v=(2*Math.PI*simR/(q.simT/simSpeed)).toFixed(2);
+  const ac=(4*Math.PI*Math.PI*simR/Math.pow(q.simT/simSpeed,2)).toFixed(2);
+  const om=(2*Math.PI*simSpeed/q.simT).toFixed(3);
+  el.innerHTML=[['T',T+' s'],['f',f+' Hz'],['ω',om+' r/s'],['v',v+' u/s'],['ac',ac+' u/s²'],['r',simR+' u']]
+    .map(([l,v])=>`<div class="smt"><div class="smt-l">${l}</div><div class="smt-v">${v}</div></div>`).join('');
+}
+
+/* ═══════════════════════════════
+   PROGRESS / HUD
+═══════════════════════════════ */
+function renderHUD(){
+  document.getElementById('score-num').textContent=String(score).padStart(3,'0');
+  document.getElementById('lives-row').textContent='❤️'.repeat(Math.max(lives,0))+'🖤'.repeat(Math.max(0,3-lives));
+  const pct=Math.round((cur+1)/QS.length*100);
+  document.getElementById('prog-txt').textContent=`QUESTÃO ${cur+1} / ${QS.length}`;
+  document.getElementById('prog-pct').textContent=pct+'%';
+  document.getElementById('prog-fill').style.width=pct+'%';
+  document.getElementById('prog-dots').innerHTML=QS.map((_,i)=>{
+    let c='pd';
+    if(i===cur)c+=' cur';
+    else if(answered[i])c+=correct[i]?' ok':' bad';
+    return `<div class="${c}"></div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════
+   VIZ KEY
+═══════════════════════════════ */
+function renderVizKey(q){
+  const el=document.getElementById('viz-key');
+  const map={
+    v:[{cls:'vk-v',lbl:'v⃗  velocidade linear (tangente)'}],
+    ac:[{cls:'vk-a',lbl:'ac⃗  aceleração centrípeta (→ centro)'}],
+    fc:[{cls:'vk-v',lbl:'v⃗  velocidade linear'},{cls:'vk-a',lbl:'ac⃗  aceleração centrípeta'},{cls:'vk-f',lbl:'Fc⃗  força centrípeta'}],
+    v2:[{cls:'vk-v',lbl:'vA  vel. linear ponto A (rA)'},{cls:'vk-f',lbl:'vB  vel. linear ponto B (rB=2rA)'}]
+  };
+  el.innerHTML=(map[q.viz]||[]).map(k=>`<div class="vk ${k.cls}">${k.lbl}</div>`).join('');
+}
+
+/* ═══════════════════════════════
+   RENDER QUESTION
+═══════════════════════════════ */
+function render(idx){
+  const q=QS[idx];const done=answered[idx];
+  renderHUD();renderVizKey(q);
+  const LTRS=['A','B','C','D'];
+  document.getElementById('qcard').innerHTML=`
+    <div class="qcard-head">
+      <div class="qnum">Q${idx+1}</div>
+      <span style="font-size:12px;color:var(--dim);font-family:var(--font-mono)">/${QS.length}</span>
+      <div class="qcat">${q.cat}</div>
+    </div>
+    <div class="qcard-body">
+      <div class="scenario-box">${q.scenario}</div>
+      <div class="formula-chips">${q.formulas.map(f=>`<span class="fchip">${f}</span>`).join('')}</div>
+      <div class="qtext">${q.text}</div>
+      <div class="opts" id="opts">
+        ${q.opts.map((o,i)=>{
+          let c='opt';
+          if(done&&i===q.ans)c+=' c-rev';
+          return `<button class="${c}" data-i="${i}" ${done?'disabled':''}><span class="oltr">${LTRS[i]}</span>${o}</button>`;
+        }).join('')}
+      </div>
+      ${done?buildSol(idx):''}
+    </div>
+    <div class="qcard-foot">
+      <button class="nbtn" onclick="go(${idx-1})" ${idx===0?'disabled':''}>← Anterior</button>
+      <button class="nbtn prim" onclick="go(${idx+1})" ${idx===QS.length-1&&!answered.every(Boolean)?'disabled':''}>
+        ${idx===QS.length-1?'Resultado →':'Próxima →'}
+      </button>
+    </div>
+  `;
+
+  if(!done){
+    document.querySelectorAll('.opt').forEach(btn=>{
+      btn.addEventListener('click',function(){
+        const ch=+this.dataset.i;
+        answered[idx]=true;
+        const ok=ch===q.ans;correct[idx]=ok;
+        if(ok){score+=100+lives*10;}
+        else{score=Math.max(0,score-20);lives=Math.max(0,lives-1);}
+        document.querySelectorAll('.opt').forEach((b,i)=>{
+          b.disabled=true;
+          if(i===q.ans)b.classList.add(ok?'c-ok':'c-rev');
+          if(!ok&&i===ch)b.classList.add('c-bad');
+          if(ok&&i===ch)b.classList.add('c-ok');
+        });
+        document.querySelector('.qcard-body').insertAdjacentHTML('beforeend',buildSol(idx));
+        renderHUD();
+        if(lives<=0){setTimeout(showResult,2800);return;}
+        // auto-advance
+        setTimeout(()=>go(idx+1),3500);
+      });
+    });
+  }
+  startSim(q);
+}
+
+function buildSol(idx){
+  const q=QS[idx],ok=correct[idx];
+  return `<div class="solution">
+    <div class="sol-hdr ${ok?'ok':'bad'}">
+      ${ok?'✓ CORRETO — RESOLUÇÃO PASSO A PASSO':'✗ INCORRETO — VEJA A RESOLUÇÃO'}
+    </div>
+    <div class="sol-steps">
+      ${q.steps.map((s,i)=>`
+        <div class="sstep">
+          <span class="sn">${i+1}</span>
+          <div class="sw">
+            <div>${s.t}</div>
+            <div class="smath">${s.m}</div>
+            ${s.r?`<div class="sresult">→ ${s.r}</div>`:''}
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ═══════════════════════════════
+   RESULT
+═══════════════════════════════ */
+function showResult(){
+  stopSim();
+  const s=correct.filter(Boolean).length,t=QS.length;
+  const pct=Math.round(s/t*100);
+  const msgs=[
+    [85,'Excelente! Você domina completamente o MCU — das fórmulas básicas aos desafios orbitais.'],
+    [60,'Bom desempenho! Revise ac = v²/r, a direção centrípeta e as relações ω × r.'],
+    [0,'Continue praticando! Foco em: T = 2πr/v, f = 1/T, v = ωr, ac = v²/r, Fc = mac.']
+  ];
+  const msg=msgs.find(([m])=>pct>=m)[1];
+  const div=document.createElement('div');
+  div.className='result-overlay';
+  div.innerHTML=`
+    <div class="result-box">
+      <div class="res-eyebrow">Lab MCU · Resultado Final</div>
+      <div class="res-title">LAB <em>${pct>=80?'COMPLETO':pct>=60?'OK':'REVISÃO'}</em></div>
+      <div class="res-score-big">${score}</div>
+      <div class="res-score-lbl">PONTOS · ${pct}% DE ACERTO</div>
+      <div class="res-msg">${msg}</div>
+      <div class="res-grid">
+        ${QS.map((q,i)=>`<div class="rbadge ${correct[i]?'ok':'bad'}">${correct[i]?'✓':'✗'} Q${i+1} ${q.cat.split(' ')[0]}</div>`).join('')}
+      </div>
+      <button class="res-restart" onclick="restart()">↺ JOGAR NOVAMENTE</button>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function go(idx){
+  stopSim();
+  if(idx>=QS.length){showResult();return;}
+  if(idx<0)return;
+  cur=idx;render(idx);
+}
+
+function restart(){
+  document.querySelector('.result-overlay')?.remove();
+  cur=0;score=0;lives=3;
+  answered=Array(QS.length).fill(false);correct=Array(QS.length).fill(false);
+  simAngle=0;simAngle2=0;trail=[];trail2=[];
+  render(0);
+}
+
+render(0);
+</script>
+</body>
+</html>
